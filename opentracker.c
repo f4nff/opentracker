@@ -48,6 +48,7 @@ static char * g_serverdir;
 static char * g_serveruser;
 static unsigned int g_udp_workers;
 
+static void panic( const char *routing ) __attribute__ ((noreturn));
 static void panic( const char *routine ) {
   fprintf( stderr, "%s: %s\n", routine, strerror(errno) );
   exit( 111 );
@@ -238,6 +239,7 @@ static void handle_accept( const int64 serversocket ) {
     tai_unix( &(t.sec), (g_now_seconds + OT_CLIENT_TIMEOUT) );
     io_timeout( sock, t );
   }
+  io_eagain(serversocket);
 }
 
 static void * server_mainloop( void * args ) {
@@ -623,9 +625,6 @@ int main( int argc, char **argv ) {
     ot_try_bind( serverip, 6969, FLAG_UDP );
   }
 
-  if( !g_udp_workers )
-    udp_init( -1, 0 );
-
 #ifdef WANT_SYSLOGS
   openlog( "opentracker", 0, LOG_USER );
   setlogmask(LOG_UPTO(LOG_INFO));
@@ -642,6 +641,8 @@ int main( int argc, char **argv ) {
     panic( "selfpipe failed: " );
   if( !io_fd( g_self_pipe[0] ) )
     panic( "selfpipe io_fd failed: " );
+  if( !io_fd( g_self_pipe[1] ) )
+    panic( "selfpipe io_fd failed: " );
   io_setcookie( g_self_pipe[0], (void*)FLAG_SELFPIPE );
   io_wantread( g_self_pipe[0] );
 
@@ -653,6 +654,9 @@ int main( int argc, char **argv ) {
     load_state( statefile );
 
   install_signal_handlers( );
+
+  if( !g_udp_workers )
+    udp_init( -1, 0 );
 
   /* Kick off our initial clock setting alarm */
   alarm(5);
